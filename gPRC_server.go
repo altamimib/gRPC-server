@@ -4,10 +4,10 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"time"
 
 	"github.com/google/grpc"
 
@@ -23,9 +23,17 @@ type textServer struct {
 	textpb.UnimplementedTextServiceServer
 }
 
-func (s *textServer) SendText(ctx context.Context, in *textpb.TextLine) (*textpb.TextLine, error) {
-	// This method is not used in this example but can be extended for future functionalities
-	return in, nil
+func (s *textServer) SendTextLines(stream textpb.TextService_SendTextLinesServer) error {
+	for {
+		line, err := stream.Recv()
+		if err == io.EOF {
+			return nil // Client finished sending lines
+		}
+		if err != nil {
+			return err // Handle errors during receiving lines
+		}
+		fmt.Println(line.GetContent()) // Process/log the received line
+	}
 }
 
 func readFileLines() ([]string, error) {
@@ -59,14 +67,27 @@ func main() {
 			lines, err := readFileLines()
 			if err != nil {
 				log.Printf("error reading file: %v", err)
+				continue // Skip sending lines if reading fails
+			}
+			conn, err := grpc.Dial("localhost:9000", grpc.WithInsecure()) // Update address if client runs elsewhere
+			if err != nil {
+				log.Printf("failed to connect to client: %v", err)
+				continue // Skip sending lines if connection fails
+			}
+			defer conn.Close()
+			client := textpb.NewTextServiceClient(conn)
+			stream, err := client.SendTextLines(context.Background()) // Initiate stream with client
+			if err != nil {
+				log.Printf("failed to create stream: %v", err)
+				continue // Skip sending lines if stream creation fails
 			}
 			for _, line := range lines {
-				fmt.Println(line) // Simulate sending lines to client (replace with actual gRPC call)
+				if err := stream.Send(&textpb.TextLine{Content: line}); err != nil {
+					log.Printf("failed to send line: %v", err)
+					// Consider handling individual line sending errors or closing the stream
+				}
 			}
-			time.Sleep(1 * time.Minute)
+			stream.CloseSend() // Close the sending stream after sending all lines
 		}
 	}()
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
 }

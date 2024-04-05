@@ -1,12 +1,13 @@
-// This file is named text_message.proto
 syntax = "proto3";
 
 package textpb;
+
+service TextService {
+  rpc SendTextLines (stream TextLine) returns (Empty); // Stream of TextLine messages
+}
 
 message TextLine {
   string content = 1;
 }
 
-service TextService {
-  rpc SendText (TextLine) returns (TextLine); // Placeholder for future use
-}
+message Empty {} // Empty message for response
